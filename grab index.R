@@ -1,6 +1,3 @@
-library(XML)
-library(plyr)
-
 # A function that will take a string (pattern) and search for where it occurs in
 # another string (to.search)
 find.starting.char <- function(pattern, to.search, what = "first"){

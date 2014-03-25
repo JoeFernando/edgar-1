@@ -1,0 +1,39 @@
+Producing Financial Datasets for Modeling
+========================================================
+
+Introduction
+------------
+When working with financial data, there are a plethora of tools and data sources that are available to the public. However, collecting these into a single dataset for analysis is a far from trivial exercise. There area a few packages that have a very limited capacity to bring financial data into R and work with it, but few (if any) have the ability to collect comprehensive financial data from multiple sources and construct a single data frame in which analaysis is straightforward.
+
+Types of Data
+-------------
+There are few different data items that we'd ideally like to use to construct a financial dataset with which modeling can be done. A few examples:
+
+* Stock Price
+* Dividend Payouts
+* Options Prices
+* Company Financials including quarterly earnings
+
+Data Sources
+------------
+We'll need to get this data from a variety of sources. Its also worth noting that I'd rather not reinvent the wheel. The `quantmod` package already provides a pretty reliable way to pull data for historical stock prices, dividend payouts, and options data, and to an incredibly limited extent financials data. 
+
+For more comprehensive data on the company financials, we can turn to the SEC's EDGAR (**E**lectronic **D**ata **G**athering **A**nd **R**etrieval) database. Here, companies have to file a slew of electronic files (a comprehensive list can be found [here](http://www.sec.gov/info/edgar/forms/edgform.pdf)). The form that we'll be most interested in is the 10-K and the 10-KA. These are reports (or ammended reports in the case of the 10-KA) that companies must file quarterly, and they contain a whole host of variables that aren't accessable through `quantmod`.
+
+This quarterly report data is stored in XBRL (E**x**tensible **B**usiness **R**eporting **L**anguage) format, which was implemented in 2010 as the standard for which quarterly reports must be filed with the SEC. 
+
+Putting the Data Together
+-------------------------
+Since the data is submitted in a common format with the SEC, this allows the data to be grabbed in a consistent manner by implementing the `XBRL` package. However, this doesn't make for easy data gathering. Variables reported in 10-K will vary from compnay to company for a host of different reasons. Some variables reported will be specific to individual companies, some will be specific to the sector in which the business operates, and some will be common across all companies. 
+
+Working with the Data Visually
+------------------------------
+Finally, the project will put all of the funcitonality it builds into a visual interface in which a person can build a dataset using simple tools rather than complex inputs to R functions. 
+
+Project Goals
+-------------
+1. Build functionality for looking up and pulling quarterly reporting data for companies
+2. Build funcitonality for putting together quarterly reporting data into a dataframe that can be easily used for modeling
+3. Build functionality to put goether data from multiple companies in a coherent manner (i.e. pick variables that are common to both companies)
+4. Build funcitonality for incorporating quarterly reporing data with things like stock and option prices
+5. Build a shiny app frontend in order to build the dataset visually

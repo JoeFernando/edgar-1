@@ -7,7 +7,7 @@ library(lubridate)
 cik.lookup <- function(company){
   company <- gsub(" ","+", company)
   cik.table <- readHTMLTable(paste0("http://www.sec.gov/cgi-bin/browse-edgar?company=", company, "&owner=include&action=getcompany"))
-  if(length(cik.table) == 0){ cat("No matching companies\n"); return(invisible())}
+  if(length(cik.table) == 0){ return(invisible())}
   cik.table[[1]]
 }
 

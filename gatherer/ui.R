@@ -16,6 +16,10 @@ shinyUI(pageWithSidebar(
       textInput(inputId = "formtype",
                 label = "Form Type",
                 value = "10-K")
+      ),
+    
+    wellPanel(
+      uiOutput("formselect")
       )
   ),
   

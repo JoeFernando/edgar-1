@@ -1,14 +1,33 @@
-library(XML)
-library(XBRL)
-library(plyr)
-library(dplyr)
-library(reshape2)
-library(lubridate)
-cik.lookup <- function(company){
+library(XML, quietly = FALSE, warn.conflicts = FALSE)
+library(XBRL, quietly = FALSE, warn.conflicts = FALSE)
+library(plyr, quietly = FALSE, warn.conflicts = FALSE)
+library(dplyr, quietly = FALSE, warn.conflicts = FALSE)
+library(reshape2, quietly = FALSE, warn.conflicts = FALSE)
+library(lubridate, quietly = FALSE, warn.conflicts = FALSE)
+
+## ---- cik.lookup ----
+cik.lookup <- function(company, quietly = TRUE){
   company <- gsub(" ","+", company)
   cik.table <- readHTMLTable(paste0("http://www.sec.gov/cgi-bin/browse-edgar?company=", company, "&owner=include&action=getcompany"))
-  if(length(cik.table) == 0){ return(invisible())}
+  if(length(cik.table) == 0){
+    if(!quietly) warning("No results found.")
+    return(invisible())
+  }
   cik.table[[1]]
+}
+
+## ---- get.filing.locs ----
+get.filing.locs <- function(cik, type = "", dateb = "", owner = "exclude",start = 0, count = 100, n.tot = -1){
+  url <- gen.url(cik, type, dateb, owner, start, count)
+  filing.list <- list()
+  while(TRUE){
+    filings <- grab.filing.locs.at(url)
+    if(!is.data.frame(filings)) break
+    filing.list[[length(filing.list) + 1]] <- filings
+    start <- start + count
+    url <- gen.url(cik, type, dateb, owner, start, count)
+  }
+  rbind.fill(filing.list)
 }
 
 grab.filing.locs.at <- function(url){
@@ -30,20 +49,7 @@ gen.url <- function(cik, type, dateb, owner, start, count){
          "&count=",  count)
 }
 
-
-get.filing.locs <- function(cik, type = "", dateb = "", owner = "exclude",start = 0, count = 100, n.tot = -1){
-  url <- gen.url(cik, type, dateb, owner, start, count)
-  filing.list <- list()
-  while(TRUE){
-    filings <- grab.filing.locs.at(url)
-    if(!is.data.frame(filings)) break
-    filing.list[[length(filing.list) + 1]] <- filings
-    start <- start + count
-    url <- gen.url(cik, type, dateb, owner, start, count)
-  }
-  rbind.fill(filing.list)
-}
-
+## ---- get.files ----
 get.files <- function(link){
   url <- paste0("http://www.sec.gov",link)
   doc <- htmlTreeParse(url, useInternalNodes = T)
@@ -54,8 +60,7 @@ get.files <- function(link){
 
 xbrl.inst.doc.loc <- function(files) paste0("http://www.sec.gov",subset(files, Description == "XBRL INSTANCE DOCUMENT")$link)
 
-xbrl.schema.doc.loc <- function(files) paste0("http://www.sec.gov",subset(files, Description == "XBRL TAXONOMY EXTENSION SCHEMA DOCUMENT")$link)
-
+## ---- getXbrlData ----
 
 getXbrlData <- function(xbrl.inst){
   out <- list()
@@ -68,8 +73,12 @@ getXbrlData <- function(xbrl.inst){
   out
 }
 
+
+## ---- other.funs ----
 get.long.var.name <- function(elementId) gsub("^ | $","",gsub("^.*_|([A-Z][a-z]*)", "\\1 ", as.character(elementId)))
 
 get.var.type <- function(elementId) gsub("(.+)_.+","\\1", as.character(data$fct$elementId))
 
 get.ticker <- function(data) as.character(data$fct$fact[data$fct$elementId == "dei_TradingSymbol"])
+
+xbrl.schema.doc.loc <- function(files) paste0("http://www.sec.gov",subset(files, Description == "XBRL TAXONOMY EXTENSION SCHEMA DOCUMENT")$link)

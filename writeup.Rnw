@@ -1,0 +1,90 @@
+\documentclass{article}
+
+\usepackage[margin = 1in]{geometry}
+
+\author{Sam Helmich}
+\title{Integrating Quarterly Reporting Data with Other Sources}
+\begin{document}
+<<initalize, echo = FALSE>>=
+library(xtable)
+source("gatherer/useful functions.R")
+read_chunk("gatherer/useful functions.R")
+@
+\maketitle
+
+\section{Quarterly Reporting Data}
+Quarterly reporting data is stored in the SEC's EDGAR (\textbf{E}lectronic \textbf{D}ata \textbf{G}athering \textbf{A}nd \textbf{R}etrieval) files. Since late 2008 / early 2009, companies have been required to report financial information in a standardized format, specifically XBRL (E\textbf{X}tensible \textbf{B}usiness \textbf{R}eporting \textbf{L}anguage). This ensures that the data is all in the same format, however this format is not something that is easy or even nice to work with. 
+
+\subsection{Finding a Company}
+Before we can pull data on an individual company, we must first find that company's CIK (\textbf{C}entral \textbf{I}ndex \textbf{K}ey). The SEC provides a web interface for searching for a CIK for a particular company here: http://www.sec.gov/cgi-bin/browse-edgar. However, ideally this is a task that it would be nice to complete in R itself. For this, we'll build a \texttt{cik.lookup} function, that takes a text string input and will return the search results.
+
+The function as it currently stands:
+<<cik.lookup>>=
+@
+
+It works well for searching for things that have multiple hits:
+<<cik.lookup.ex1, eval = FALSE>>=
+cik.lookup("Microsoft")
+@
+\begin{center}
+<<cik.lookup.ex1a, echo = FALSE, results='asis'>>=
+xtable(cik.lookup("Microsoft"))
+@
+\end{center}
+
+However, we start to run into hot water when we search for exactly the right thing.
+<<cik.lookup.ex2>>=
+cik.lookup("Fastenal")
+@
+Now obviously Fastenal is a realy company, and it does in fact have a CIK. The problem is that if you search for a company and it only returns 1 hit, then it will go to that company's filing page, which the \texttt{cik.lookup} funciton will treat the same as a search that didn't retun any results (which it should.) We want this function to ONLY get CIK's for companies, not go further. There is a different search tool (found at http://www.sec.gov/edgar/searchedgar/cik.htm), but this utilizes JavaScript to execute its search, rather than a straight forward search using a URL. This makes the function much more complicated, and as such this part isn't done yet. But since the CIK lookup works for some companies, we can use it to build the other things we need without severe reprocussions.
+
+\subsection{Finding a Company's Reports}
+Once you have a company's CIK, then accessing all of the records associated with that CIK is pretty straightforward if you're doing it from a browser, but until now no functionality that I know of has existed within R. For this, we can simply put together a URL that contains a CIK as well as a few other optional variables, and it will return 100 entries per page. For this, we'll need to keep going until we've retreived all of the records that we're after. The scope of this project will be concerned with grabbing 10-K filings (quarterly reports), but its worth noting that the \texttt{get.filing.locs} function has the capacity to search for \textit{any} form type, and can be used to find the archive location of any files. 
+
+<<get.filing.locs>>=
+@
+
+As far as I know, this function is bug-free. Sometimes it takes a bit if there are more than 100 hits, as going through multiple pages is cumbersome at times. Here, an example of pulling the filing locations of 10-K forms from Microsoft is given but not evaluated, as the output doesn't fit well on a page. 
+
+<<get.filing.locs.ex, eval = FALSE>>=
+cik <- cik.lookup("Microsoft")$CIK[2]
+get.filing.locs(cik, type = "10-K")
+@
+
+\texttt{get.filing.locs} returns a data table with 5 columns: 
+
+\begin{center}
+\begin{tabular}{ll}
+Column Name & Description \\
+Filings & This is the form type. For a 10-K form type, these will all be either 10-K or 10-K/A\\
+Description & A Description full of Accounting-type jargon and filesize, nothing too useful\\
+Filing Date & The date in which it was filed\\
+File/Film Number & The specific number assigned to the file \\
+links & A link to find the filing itself within the Archives 
+\end{tabular}
+\end{center}
+
+We'll mostly be using the links from this section, as we'll need to use that to get to actual filings that we want to get the data from. 
+
+
+\subsection{Scraping a Quarterly Report}
+So once we've identified a link that we want, we can go to that link and pull the relevant filing data.
+The example we'll be pulling will be the most recent  Note this URL can be found using the following code in R:
+
+<<get.filing.locs.ex2>>=
+cik <- cik.lookup("Microsoft")$CIK[2]
+get.filing.locs(cik, type = "10-K")$links[1]
+@
+
+That link doesn't include the prefix "www.sec.gov", but it can easily be added in the functions that are built to use it. Once we have a location for the quarterly reports, we need to find the XBRL Instance Document, as this is the document that contais all of the financial info in the XBRL format. To get the XBRL instance document, we only need to scrape the page and find the link to the document (the description will be "XBRL INSTANCE DOCUMENT", yay for standardization).
+
+The first thing we'll do is scrape the name of all files that are submitted for each filing, and then find the xbrl instance document.
+
+<<get.files>>=
+@
+
+Once we've actually got the location of the xbrl instance file, we can then use functionality from the \texttt{'XBRL'} package to process the data into a bit more workable form. 
+
+<<getXbrlData>>=
+@
+\end{document}

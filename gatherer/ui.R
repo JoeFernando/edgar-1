@@ -1,3 +1,5 @@
+## ---- ui ----
+
 shinyUI(pageWithSidebar(
   headerPanel("Financial Data Gatherer"),
   
@@ -20,6 +22,10 @@ shinyUI(pageWithSidebar(
     
     wellPanel(
       uiOutput("formselect")
+      ),
+    
+    wellPanel(
+      uiOutput("elementselect")
       )
   ),
   

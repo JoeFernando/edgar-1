@@ -9,6 +9,8 @@
 library(xtable)
 source("gatherer/useful functions.R")
 read_chunk("gatherer/useful functions.R")
+read_chunk("gatherer/ui.R")
+read_chunk("gatherer/server.R")
 @
 \maketitle
 
@@ -87,4 +89,73 @@ Once we've actually got the location of the xbrl instance file, we can then use 
 
 <<getXbrlData>>=
 @
+
+This form produces a list with 4 elemtents: a "facts" data frame where most of the information is, a "context" data frame, which allows for multiple variables of the same name to be delineated as meaning slightly different things, a "units" data frame where the units for all of the facts are stored (USD, EURO, shares, etc.), and a schema data frame which so far as I can tell simply lists the file name.
+
+\subsection{Where To Go From Here}
+
+From here, the xbrl data needs to be in a workable format. My ideas on how to do this is to take the three useful parts of the output of \texttt{getXbrlData} and merge them together (or maybe put the merge step earlier). Then I can take out the facts (the variable name for where the data I want it store), the elementId (what I'd like to use as a varaible name), and the start date and end date, and then the rest of the data could be treated as some sort of key (after taking out the data described) that can be used to identify each of the variable names. I then need a way that I can distribute values to ranges of dates (from start date to end date). I have some code for this portion written, but its not its own function yet. Here is the code as it currently rests in my workspace:
+
+<<workspace, eval = FALSE>>=
+source("gatherer/useful functions.R")
+
+cik.lookup("Microsoft")
+## Google's CIK is 0001288776
+
+
+## I want to grab form 10-K
+fls <- get.filing.locs(cik = 0000789019, type = "10-K")
+
+# Maybe I want to get the data from the most recent 10-K filing
+files <- get.files(fls$links[1])
+
+# Grab the xbrl instance doc
+xbrl.inst <- xbrl.inst.doc.loc(files)
+
+# Grab the xbrl data
+data <- getXbrlData(xbrl.inst)
+
+create.megaframe <- function(xbrlData) Reduce(f = function(...) merge(..., all = T), x = xbrlData[-4])
+
+niceify <- function(useful.frame){
+  store <- vector("list", nrow(useful.frame))
+  for(i in 1:length(store)){
+    x <- useful.frame[i,]
+    if(is.na(x$startDate)){
+      store[[i]] <- data.frame(variable = x$variable, fact = x$fact, date = x$endDate)
+    }else{
+      store[[i]] <- data.frame(variable = x$variable, fact = x$fact, date = x$startDate + days(0:(x$endDate - x$startDate)))
+    }
+  }
+  useful <- rbind.fill(store)
+  dcast(useful, date ~ variable, value.var = "fact")
+}
+
+mf <- create.megaframe(data)
+useful <- c("elementId", "fact", "decimals", "startDate", "endDate", "factId")
+mf$startDate = ymd(mf$startDate)
+mf$endDate = ymd(mf$endDate)
+keyframe <- unique(mf[,which(!(names(mf) %in% useful))])
+keyframe$context.key <- c(1:nrow(keyframe))
+out.mf <- merge(keyframe, mf)
+out.mf$variable <- paste0(out.mf$elementId,"-",out.mf$context.key)
+useful.frame <- out.mf[,c("variable", "fact", "startDate", "endDate")]
+
+ufn <- niceify(useful.frame)
+@
+
+The end form I want my data in will be the current output of \texttt{niceify}: A column for date, then a column for each variable. This will then be VERY easy to merge with other types of data, as we'll have an observation for each day, which is the standard format for mos or all of the data that comes out of the \texttt{quantmod} package, which I will be using as a major data source for stock and commodity prices.
+
+\subsection{\texttt{'Gatherer'} Shiny App}
+I wanted to get the guts working before developing a shiny app that would allow for putting this data together in an easy manner. I've started to write one with some things that I'd like to include, but most of that will be on hold until I finish the last few nuts and bolts bits. Below is the shiny code as it currently stands. 
+
+<<ui, eval = FALSE>>=
+@
+
+<<server, eval = FALSE>>=
+@
+
+
+
+
 \end{document}

@@ -75,6 +75,22 @@ getXbrlData <- function(xbrl.inst){
 
 
 ## ---- other.funs ----
+create.megaframe <- function(xbrlData) Reduce(f = function(...) merge(..., all = T), x = xbrlData[-4])
+
+niceify <- function(useful.frame){
+  store <- vector("list", nrow(useful.frame))
+  for(i in 1:length(store)){
+    x <- useful.frame[i,]
+    if(is.na(x$startDate)){
+      store[[i]] <- data.frame(variable = x$variable, fact = x$fact, date = x$endDate)
+    }else{
+      store[[i]] <- data.frame(variable = x$variable, fact = x$fact, date = x$startDate + days(0:(x$endDate - x$startDate)))
+    }
+  }
+  useful <- rbind.fill(store)
+  dcast(useful, date ~ variable, value.var = "fact")
+}
+
 get.long.var.name <- function(elementId) gsub("^ | $","",gsub("^.*_|([A-Z][a-z]*)", "\\1 ", as.character(elementId)))
 
 get.var.type <- function(elementId) gsub("(.+)_.+","\\1", as.character(data$fct$elementId))

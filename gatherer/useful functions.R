@@ -1,9 +1,11 @@
-library(XML, quietly = FALSE, warn.conflicts = FALSE)
-library(XBRL, quietly = FALSE, warn.conflicts = FALSE)
-library(plyr, quietly = FALSE, warn.conflicts = FALSE)
-library(dplyr, quietly = FALSE, warn.conflicts = FALSE)
-library(reshape2, quietly = FALSE, warn.conflicts = FALSE)
-library(lubridate, quietly = FALSE, warn.conflicts = FALSE)
+library(XML, quietly = TRUE, warn.conflicts = FALSE)
+library(XBRL, quietly = TRUE, warn.conflicts = FALSE)
+library(plyr, quietly = TRUE, warn.conflicts = FALSE)
+library(dplyr, quietly = TRUE, warn.conflicts = FALSE)
+library(reshape2, quietly = TRUE, warn.conflicts = FALSE)
+library(lubridate, quietly = TRUE, warn.conflicts = FALSE)
+library(parallel, quietly = TRUE, warn.conflicts = FALSE)
+suppressMessages(library(quantmod, quietly = TRUE, warn.conflicts = FALSE))
 
 ## ---- cik.lookup ----
 cik.lookup <- function(company, quietly = TRUE){
@@ -58,25 +60,55 @@ get.files <- function(link){
   table
 }
 
-xbrl.inst.doc.loc <- function(files) paste0("http://www.sec.gov",subset(files, Description == "XBRL INSTANCE DOCUMENT")$link)
+xbrl.inst.doc.loc <- function(files){
+  link <- subset(files, Description == "XBRL INSTANCE DOCUMENT")
+  if(nrow(link) == 0) return(NA)
+  paste0("http://www.sec.gov",link$link)
+} 
 
 ## ---- getXbrlData ----
 
 getXbrlData <- function(xbrl.inst){
-  out <- list()
+  to.be.merged <- list()
   doc <- xbrlParse(xbrl.inst)
-  out$fct <- xbrlProcessFacts(doc)
-  out$cts <- xbrlProcessContexts(doc)
-  out$unt <- xbrlProcessUnits(doc)
-  out$sch <- xbrlGetSchemaName(doc)
+  to.be.merged $fct <- xbrlProcessFacts(doc)
+  to.be.merged $cts <- xbrlProcessContexts(doc)
+  to.be.merged $unt <- xbrlProcessUnits(doc)
   xbrlFree(doc)
-  out
+  mf <- merge.list(to.be.merged)
+  mf$startDate <- ymd(mf$startDate)
+  mf$endDate <- ymd(mf$endDate)
+  mf$ticker <- get.ticker(to.be.merged)
+  mf
 }
 
-
 ## ---- other.funs ----
-create.megaframe <- function(xbrlData) Reduce(f = function(...) merge(..., all = T), x = xbrlData[-4])
+# Deprecated. See merge.list
+#create.megaframe <- function(x) Reduce(f = function(...) merge(..., all = T), x = x)
 
+merge.list <- function(x){
+  if(length(x) < 2) return(x[[1]])
+  Reduce(f = function(...) merge(..., all = T), x)
+} 
+
+# niceify.row <- function(x){
+#   name <- x$variable
+#   df <- data.frame(variable = x$variable, fact = x$fact, date = if(is.na(x$startDate)){x$startDate}else{x$startDate + days(0:(x$endDate - x$startDate))})
+#   names(df)[1] <- x$variable
+#   df
+# }
+# 
+# niceify <- function(useful.frame){
+#   store <- list()
+#   for(i in 1:nrow(useful.frame)){
+#     store[[i]] <- niceify.row(useful.frame[i,])
+#   }
+#   useful <- rbind.fill(store)
+#   dcast(useful, date ~ variable, value.var = 'fact', fun.aggregate = function(x) x[1])
+# }
+
+
+# This function sucks. Replace it with something less awful asap.
 niceify <- function(useful.frame){
   store <- vector("list", nrow(useful.frame))
   for(i in 1:length(store)){
@@ -88,8 +120,56 @@ niceify <- function(useful.frame){
     }
   }
   useful <- rbind.fill(store)
-  dcast(useful, date ~ variable, value.var = "fact")
+  # Note: If there are more than 1 obs, then you can use it to check for consistency. Perhaps this can be used as a mechanism to validate data?
+  dcast(useful, date ~ variable, value.var = "fact", fun.aggregate = function(x) x[1])
 }
+
+produce.frame <- function(xbrlData, variables = "."){
+  out <- list()
+  xbrlData.t <- xbrlData[grep(variables, xbrlData$elementId),]
+  ticker <- xbrlData$ticker
+  xbrlData <- xbrlData.t[,-which(names(xbrlData) == "ticker")]
+  out$keyframe <- unique(xbrlData.t[, which(names(xbrlData) %in% c("elementId", "fact", "decimals", "startDate", "endDate", "factId"))])
+  out$keyframe$context.key <- paste0(c(1L:nrow(out$keyframe)),ticker[1])
+  mid.frame <- merge(xbrlData.t, out$keyframe)
+  mid.frame$variable <- paste0(mid.frame$elementId,"-",mid.frame$context.key)
+  out$data <- niceify(useful.frame = mid.frame[,c("variable", "fact", "startDate", "endDate")])
+  out
+}
+
+pull.10K <- function(cik, from = as.Date("1990-01-01"), to = today()){
+  fls <- get.filing.locs(cik = cik, type = "10-K")
+  dates <- as.Date(fls$`Filing Date`)
+  used.rows <- (dates > from) & (dates < to)
+  fls <- fls[used.rows,]
+  xbrlData <- list()
+  for(i in 1:nrow(fls)){
+    files <- get.files(fls$links[i])
+    xbrl.inst <- xbrl.inst.doc.loc(files)
+    if(is.na(xbrl.inst)) break
+    xbrlData[[i]] <- getXbrlData(xbrl.inst)
+  }
+  rbind.fill(xbrlData)
+}
+
+
+xbrl.cn <- function(xbrlDataList, variables){
+  if(is.null(xbrlDataList)) return(NULL)
+  if(length(xbrlDataList) == 0) return(NULL)
+  post.nice.data <- list()
+  post.nice.keyframe <- list()
+  out <- list()
+  for(i in 1:length(xbrlDataList)){
+    this <- produce.frame(xbrlDataList[[i]], variables)
+    post.nice.data[[i]] <- this$data
+    post.nice.keyframe[[i]] <- this$keyframe
+  }
+  out$data <- merge.list(post.nice.data)
+  out$keyframe <- merge.list(post.nice.keyframe)
+  out
+}
+
+fix.getSymbols <- function(x) data.frame(coredata(x), date = ymd(index(x)))
 
 get.long.var.name <- function(elementId) gsub("^ | $","",gsub("^.*_|([A-Z][a-z]*)", "\\1 ", as.character(elementId)))
 
